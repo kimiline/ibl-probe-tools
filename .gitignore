@@ -1,0 +1,6 @@
+*.csv
+*.exe
+tester_xyzpicks.py
+__pycache__/
+*.pyc
+.DS_Store
