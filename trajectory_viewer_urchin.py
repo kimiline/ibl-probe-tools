@@ -44,7 +44,6 @@ ATLAS_OPTIONS = [
     ('Princeton MRI 20 µm', 'princeton20'),
     ('Waxholm MRI 39 µm', 'waxholm39'),
 ]
-REGION_HIGHLIGHT_COLOR = '#f39c12'   # orange, visible against the grey transparent brain
 
 
 def _probe_in_range(xyz_um: np.ndarray, axis: int, val: float) -> bool:
@@ -752,7 +751,6 @@ class UrchinViewerWindow(QtWidgets.QMainWindow):
             try:
                 area = getattr(self._atlas, acronym)
                 area.set_visibility(True, push=False)
-                area.set_color(REGION_HIGHLIGHT_COLOR, push=False)
                 area.set_material('opaque-lit', push=False)
                 self._highlighted_acronyms.append(acronym)
                 self.region_list.addItem(acronym)
