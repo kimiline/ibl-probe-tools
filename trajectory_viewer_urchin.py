@@ -38,6 +38,14 @@ INTERSECT_MARKER_SIZE = 10
 PROJ_LINE_ALPHA = 0.25   # faint projected trajectory always visible on each panel
 SCROLL_STEP_UM = 50   # µm per scroll tick
 
+ATLAS_OPTIONS = [
+    ('CCF 25 µm (default)', 'ccf25'),
+    ('CCF 50 µm', 'ccf50'),
+    ('Princeton MRI 20 µm', 'princeton20'),
+    ('Waxholm MRI 39 µm', 'waxholm39'),
+]
+REGION_HIGHLIGHT_COLOR = '#f39c12'   # orange, visible against the grey transparent brain
+
 
 def _probe_in_range(xyz_um: np.ndarray, axis: int, val: float) -> bool:
     """Return True if the slice at `val` is within the probe's extent on `axis`
@@ -230,6 +238,8 @@ class UrchinViewerWindow(QtWidgets.QMainWindow):
         self._sessions_map: dict[str, str] = {}
         self._data: list[dict] = []
         self._urchin_ready = False
+        self._atlas = urchin.ccf25
+        self._highlighted_acronyms: list[str] = []
 
         # Debounce timer: fires _redraw() 100 ms after the last scroll event
         self._redraw_timer = QtCore.QTimer(self)
@@ -285,6 +295,13 @@ class UrchinViewerWindow(QtWidgets.QMainWindow):
         self.alpha_lbl = QtWidgets.QLabel("0.10")
         self.alpha_lbl.setFixedWidth(32)
         top.addWidget(self.alpha_lbl)
+        top.addSpacing(16)
+        top.addWidget(QtWidgets.QLabel("Atlas:"))
+        self.atlas_combo = QtWidgets.QComboBox()
+        for label, _ in ATLAS_OPTIONS:
+            self.atlas_combo.addItem(label)
+        self.atlas_combo.currentIndexChanged.connect(self._on_atlas_changed)
+        top.addWidget(self.atlas_combo)
         top.addStretch()
         root.addLayout(top)
 
@@ -392,6 +409,37 @@ class UrchinViewerWindow(QtWidgets.QMainWindow):
             "<small><i>Urchin view: posterior view — left=left, anterior away</i></small>")
         urchin_note.setWordWrap(True)
         vlay.addWidget(urchin_note)
+
+        vlay.addSpacing(6)
+        sep3 = QtWidgets.QFrame()
+        sep3.setFrameShape(QtWidgets.QFrame.HLine)
+        sep3.setFrameShadow(QtWidgets.QFrame.Sunken)
+        vlay.addWidget(sep3)
+        vlay.addWidget(self._hdr("Brain Regions (Urchin)"))
+        vlay.addWidget(QtWidgets.QLabel(
+            "<small><i>Type acronym(s), press Enter or Add. Right-click list to remove.</i></small>"))
+
+        reg_row = QtWidgets.QHBoxLayout()
+        self.region_edit = QtWidgets.QLineEdit()
+        self.region_edit.setPlaceholderText("VISam, FN, ...")
+        self.region_edit.returnPressed.connect(self._add_regions)
+        reg_row.addWidget(self.region_edit)
+        add_reg_btn = QtWidgets.QPushButton("Add")
+        add_reg_btn.setFixedWidth(42)
+        add_reg_btn.clicked.connect(self._add_regions)
+        reg_row.addWidget(add_reg_btn)
+        vlay.addLayout(reg_row)
+
+        self.region_list = QtWidgets.QListWidget()
+        self.region_list.setMaximumHeight(90)
+        self.region_list.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
+        self.region_list.customContextMenuRequested.connect(self._region_context_menu)
+        vlay.addWidget(self.region_list)
+
+        clear_reg_btn = QtWidgets.QPushButton("Clear All Regions")
+        clear_reg_btn.setFixedHeight(22)
+        clear_reg_btn.clicked.connect(self._clear_regions)
+        vlay.addWidget(clear_reg_btn)
 
         vlay.addStretch()
         splitter.addWidget(sidebar)
@@ -643,7 +691,7 @@ class UrchinViewerWindow(QtWidgets.QMainWindow):
     def _urchin_load_atlas(self):
         self.statusBar().showMessage("Loading CCF25 atlas in Urchin...")
         try:
-            urchin.ccf25.load()
+            self._atlas.load()
         except Exception:
             pass
         QtCore.QTimer.singleShot(3000, self._urchin_post_setup)
@@ -651,9 +699,11 @@ class UrchinViewerWindow(QtWidgets.QMainWindow):
     def _urchin_post_setup(self):
         try:
             alpha = self.alpha_slider.value() / 100.0
-            urchin.ccf25.set_visibilities([urchin.ccf25.grey], [True])
-            urchin.ccf25.set_materials([urchin.ccf25.grey], ['transparent-lit'])
-            urchin.ccf25.set_alphas([urchin.ccf25.grey], [alpha])
+            root_mesh = getattr(self._atlas, 'grey', None) or getattr(self._atlas, 'root', None)
+            if root_mesh is not None:
+                self._atlas.set_visibilities([root_mesh], [True])
+                self._atlas.set_materials([root_mesh], ['transparent-lit'])
+                self._atlas.set_alphas([root_mesh], [alpha])
         except Exception:
             pass
         # Matches horizontal slice panel orientation.
@@ -665,6 +715,7 @@ class UrchinViewerWindow(QtWidgets.QMainWindow):
         except Exception:
             pass
         self._urchin_ready = True
+        self.atlas_combo.setEnabled(False)
         self.open_btn.setText("Urchin Open")
         self.statusBar().showMessage(
             "Urchin ready. Add a session to render probes.")
@@ -676,9 +727,86 @@ class UrchinViewerWindow(QtWidgets.QMainWindow):
         self.alpha_lbl.setText(f"{alpha:.2f}")
         if self._urchin_ready:
             try:
-                urchin.ccf25.set_alphas([urchin.ccf25.grey], [alpha])
+                root_mesh = getattr(self._atlas, 'grey', None) or getattr(self._atlas, 'root', None)
+                if root_mesh is not None:
+                    self._atlas.set_alphas([root_mesh], [alpha])
             except Exception:
                 pass
+
+    def _on_atlas_changed(self, idx: int):
+        _, key = ATLAS_OPTIONS[idx]
+        self._atlas = getattr(urchin, key)
+
+    def _add_regions(self):
+        if not self._urchin_ready:
+            self.statusBar().showMessage("Open Urchin first before highlighting regions.")
+            return
+        text = self.region_edit.text().strip()
+        if not text:
+            return
+        acronyms = [a.strip() for a in text.replace(';', ',').split(',') if a.strip()]
+        added, not_found = [], []
+        for acronym in acronyms:
+            if acronym in self._highlighted_acronyms:
+                continue
+            try:
+                area = getattr(self._atlas, acronym)
+                area.set_visibility(True, push=False)
+                area.set_color(REGION_HIGHLIGHT_COLOR, push=False)
+                area.set_material('opaque-lit', push=False)
+                self._highlighted_acronyms.append(acronym)
+                self.region_list.addItem(acronym)
+                added.append(acronym)
+            except AttributeError:
+                not_found.append(acronym)
+        if added:
+            try:
+                self._atlas._update()
+            except Exception:
+                pass
+        self.region_edit.clear()
+        parts = []
+        if added:
+            parts.append(f"Highlighted: {', '.join(added)}")
+        if not_found:
+            parts.append(f"Not found in atlas: {', '.join(not_found)}")
+        if parts:
+            self.statusBar().showMessage(' | '.join(parts))
+
+    def _clear_regions(self):
+        for acronym in self._highlighted_acronyms:
+            try:
+                area = getattr(self._atlas, acronym)
+                area.set_visibility(False, push=False)
+            except Exception:
+                pass
+        if self._highlighted_acronyms:
+            try:
+                self._atlas._update()
+            except Exception:
+                pass
+        self._highlighted_acronyms.clear()
+        self.region_list.clear()
+        if self._urchin_ready:
+            self.statusBar().showMessage("Cleared all highlighted regions.")
+
+    def _region_context_menu(self, pos):
+        item = self.region_list.itemAt(pos)
+        if item is None:
+            return
+        menu = QtWidgets.QMenu(self)
+        remove_act = menu.addAction("Remove region")
+        action = menu.exec_(self.region_list.mapToGlobal(pos))
+        if action == remove_act:
+            acronym = item.text()
+            try:
+                area = getattr(self._atlas, acronym)
+                area.set_visibility(False)
+            except Exception:
+                pass
+            if acronym in self._highlighted_acronyms:
+                self._highlighted_acronyms.remove(acronym)
+            self.region_list.takeItem(self.region_list.row(item))
 
     def _render_probes(self):
         self._delete_all_probe_objs()
