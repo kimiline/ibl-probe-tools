@@ -12,7 +12,7 @@ Standalone GUI tools for visualising NP2.4 probe trajectories registered in IBL 
 
 ## Prerequisites
 
-- IBL `iblenv` conda environment — see the [IBL ephys installation guide](https://int-brain-lab.github.io/iblenv/install_doc.html)
+- IBL `iblenv` conda environment: see the [IBL ephys installation guide](https://int-brain-lab.github.io/iblenv/install_doc.html)
 - `oursin` 0.7.2 (required for the Urchin viewer):
   ```
   conda activate iblenv
@@ -31,7 +31,7 @@ Edit the `.bat` launcher for the tool you want to run and replace `kimil` with y
 
 ### macOS
 
-**One-time setup** — make the launchers executable after cloning:
+**One-time setup:** make the launchers executable after cloning:
 
 ```bash
 chmod +x trajectory_viewer_urchin.command trajectory_viewer_local.command neuropixel_coordinates_local.command
@@ -93,4 +93,4 @@ All three tools (Urchin, the slice panels, and Lasagna) use the lab's "surgeon's
 
 ## Full usage instructions
 
-See the [Urchin Trajectory Viewer user guide](https://claude.ai/artifact/7iGUfe51u3L8fXF1EoBEYW) for a step-by-step walkthrough of the GUI.
+See the **[user guide](https://kimiline.github.io/ibl-probe-tools/)** for a step-by-step walkthrough of the trajectory viewer and Lasagna. The page source is [`docs/index.html`](docs/index.html).

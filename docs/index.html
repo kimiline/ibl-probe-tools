@@ -1,0 +1,554 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Urchin Trajectory Viewer</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+
+<style>
+:root {
+  --bg:          #f5f7fa;
+  --surface:     #ffffff;
+  --border:      #d4dde8;
+  --text:        #1e2d45;
+  --muted:       #5a6f8a;
+  --accent:      #2a6496;
+  --accent-lt:   #dde8f4;
+  --accent-dk:   #1a4b74;
+  --code-bg:     #e8f0f8;
+  --code-text:   #1a3a5c;
+  --step-bg:     #2a6496;
+  --step-text:   #ffffff;
+  --warn-bg:     #fef9ec;
+  --warn-border: #e6c24a;
+  --tag-bg:      #eef2f7;
+  --tag-border:  #bfcde0;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg:          #111a26;
+    --surface:     #172030;
+    --border:      #2a3d56;
+    --text:        #d8e4f0;
+    --muted:       #7a95b0;
+    --accent:      #4a9fd4;
+    --accent-lt:   #1a3354;
+    --accent-dk:   #6bbce8;
+    --code-bg:     #0e1c2e;
+    --code-text:   #93c5e8;
+    --step-bg:     #1e4d78;
+    --step-text:   #d8e4f0;
+    --warn-bg:     #2a2210;
+    --warn-border: #c49a28;
+    --tag-bg:      #1a2a3c;
+    --tag-border:  #2e4460;
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme="dark"] {
+  --bg:          #111a26;
+  --surface:     #172030;
+  --border:      #2a3d56;
+  --text:        #d8e4f0;
+  --muted:       #7a95b0;
+  --accent:      #4a9fd4;
+  --accent-lt:   #1a3354;
+  --accent-dk:   #6bbce8;
+  --code-bg:     #0e1c2e;
+  --code-text:   #93c5e8;
+  --step-bg:     #1e4d78;
+  --step-text:   #d8e4f0;
+  --warn-bg:     #2a2210;
+  --warn-border: #c49a28;
+  --tag-bg:      #1a2a3c;
+  --tag-border:  #2e4460;
+  color-scheme: dark;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; }
+
+body {
+  font-family: 'Inter', system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 15px;
+  line-height: 1.65;
+  padding-inline: 20px;
+  padding-block: 40px;
+}
+
+.page {
+  max-width: 700px;
+  margin-inline: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 36px;
+}
+
+/* Header */
+.header {
+  border-bottom: 2px solid var(--accent);
+  padding-bottom: 20px;
+}
+
+.header-eyebrow {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 6px;
+}
+
+h1 {
+  font-size: 26px;
+  font-weight: 700;
+  color: var(--text);
+  text-wrap: balance;
+  line-height: 1.25;
+  margin-bottom: 8px;
+}
+
+.header-sub {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+/* Section */
+.section {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 24px 24px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.section-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.step-chip {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--step-bg);
+  color: var(--step-text);
+  font-size: 13px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.step-chip.info {
+  background: var(--accent-lt);
+  color: var(--accent);
+}
+
+h2 {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text);
+  text-wrap: balance;
+}
+
+.body-text {
+  color: var(--text);
+  font-size: 14.5px;
+  line-height: 1.7;
+}
+
+.body-text + .body-text { margin-top: -4px; }
+
+/* Code / path */
+code {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12.5px;
+  background: var(--code-bg);
+  color: var(--code-text);
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+
+pre {
+  background: var(--code-bg);
+  color: var(--code-text);
+  border-radius: 6px;
+  padding: 12px 14px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12.5px;
+  line-height: 1.6;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+/* Keyboard key badges */
+kbd {
+  display: inline-block;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 1px 6px;
+  border: 1px solid var(--tag-border);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  background: var(--tag-bg);
+  color: var(--text);
+  line-height: 1.5;
+}
+
+/* Action rows */
+.action-table {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 6px 16px;
+  align-items: baseline;
+  font-size: 14px;
+}
+
+.action-label {
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+/* Warn note */
+.note {
+  background: var(--warn-bg);
+  border-left: 3px solid var(--warn-border);
+  border-radius: 0 4px 4px 0;
+  padding: 10px 14px;
+  font-size: 13.5px;
+  color: var(--text);
+  line-height: 1.55;
+}
+
+/* Steps list */
+ol.steps {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-left: 0;
+  list-style: none;
+  counter-reset: stepcount;
+}
+
+ol.steps li {
+  counter-increment: stepcount;
+  display: grid;
+  grid-template-columns: 20px 1fr;
+  gap: 10px;
+  font-size: 14.5px;
+  line-height: 1.6;
+}
+
+ol.steps li::before {
+  content: counter(stepcount) ".";
+  color: var(--accent);
+  font-weight: 600;
+  font-size: 13px;
+  padding-top: 2px;
+}
+
+/* Feature rows */
+.feature-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.feature-item {
+  display: grid;
+  grid-template-columns: 200px 1fr;
+  gap: 8px 16px;
+  font-size: 14px;
+  align-items: start;
+}
+
+.feature-name {
+  font-weight: 600;
+  color: var(--accent-dk);
+  font-size: 13.5px;
+  padding-top: 1px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .feature-name { color: var(--accent-dk); }
+}
+
+.feature-desc { color: var(--text); line-height: 1.55; }
+
+code { overflow-wrap: anywhere; }
+
+@media (max-width: 560px) {
+  .feature-item, .action-table { grid-template-columns: 1fr; gap: 2px 0; }
+  .action-label { white-space: normal; }
+  .section { padding: 20px 16px 16px; }
+}
+
+/* Divider */
+hr {
+  border: none;
+  border-top: 1px solid var(--border);
+}
+
+/* Section group label */
+.group-label {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--muted);
+  padding-left: 2px;
+  margin-bottom: -24px;
+}
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header class="header">
+    <div class="header-eyebrow">Steinmetz IBL Lab &middot; User Guide</div>
+    <h1>Urchin + Slice Trajectory Viewer</h1>
+    <p class="header-sub">How to install, launch, and use the probe trajectory viewer GUI for NP2.4 insertions registered in Alyx, and the lab's Lasagna for checking the histology.</p>
+  </header>
+
+  <!-- PREREQUISITES -->
+  <div class="group-label">Setup</div>
+
+  <div class="section">
+    <div class="section-header">
+      <div class="step-chip info">!</div>
+      <h2>Prerequisites</h2>
+    </div>
+    <p class="body-text">You need the IBL <code>iblenv</code> conda environment. If you don't have it, follow the <a href="https://int-brain-lab.github.io/iblenv/install_doc.html" target="_blank">IBL ephys installation guide</a> first.</p>
+    <p class="body-text">You also need <strong>oursin 0.7.2</strong> installed in <code>iblenv</code>:</p>
+    <pre>conda activate iblenv
+pip install oursin==0.7.2</pre>
+    <div class="note">After installing oursin, you must patch one line in its source file. Open:<br>
+      <code>…\anaconda3\envs\iblenv\Lib\site-packages\oursin\renderer.py</code><br>
+      Find line 40 and change the URL to:<br>
+      <code>client.sio.connect('https://pinpoint.allenneuraldynamics-test.org:5000')</code>
+    </div>
+  </div>
+
+  <!-- INSTALLATION -->
+  <div class="section">
+    <div class="section-header">
+      <div class="step-chip">1</div>
+      <h2>Download the tools</h2>
+    </div>
+    <p class="body-text">Clone the repository to a folder of your choice:</p>
+    <pre>git clone https://github.com/kimiline/ibl-probe-tools.git</pre>
+    <p class="body-text">This creates an <code>ibl-probe-tools</code> folder containing the GUI scripts and their <code>.bat</code> launchers.</p>
+  </div>
+
+  <!-- BAT FILE EDIT -->
+  <div class="section">
+    <div class="section-header">
+      <div class="step-chip">2</div>
+      <h2>Edit the launcher file</h2>
+    </div>
+    <p class="body-text">Open <code>trajectory_viewer_urchin.bat</code> in Notepad. Replace the username <code>kimil</code> with your own Windows username on the Python path line:</p>
+    <pre>C:\Users\YOUR_USERNAME\anaconda3\envs\iblenv\python.exe "%~dp0trajectory_viewer_urchin.py"</pre>
+    <p class="body-text">If Anaconda is installed system-wide rather than per-user, the path may start with <code>C:\ProgramData\anaconda3\</code> instead.</p>
+  </div>
+
+  <!-- LAUNCH -->
+  <div class="section">
+    <div class="section-header">
+      <div class="step-chip">3</div>
+      <h2>Launch the GUI</h2>
+    </div>
+    <p class="body-text">Double-click <code>trajectory_viewer_urchin.bat</code>. A login dialog will appear asking for your Alyx credentials. If you have previously logged in on this machine, it will connect automatically and skip the dialog.</p>
+    <div class="action-table">
+      <span class="action-label">Alyx URL</span>
+      <span><code>https://alyx.internationalbrainlab.org</code> (pre-filled)</span>
+      <span class="action-label">Username</span>
+      <span>Your IBL Alyx username</span>
+      <span class="action-label">Password</span>
+      <span>Your IBL Alyx password</span>
+    </div>
+  </div>
+
+  <!-- USING THE GUI -->
+  <div class="group-label">Using the GUI</div>
+
+  <div class="section">
+    <div class="section-header">
+      <div class="step-chip">4</div>
+      <h2>Load probe sessions</h2>
+    </div>
+    <ol class="steps">
+      <li>In the <strong>Subject</strong> dropdown, select the mouse you want to view.</li>
+      <li>In the <strong>Session</strong> dropdown, select a recording session. Sessions are listed in date-ascending order.</li>
+      <li>Click <strong>Add Session</strong> to load that session's probe trajectories, or click <strong>Load All</strong> to load every session for that subject at once.</li>
+      <li>Repeat for additional subjects or sessions. Each loaded session appears in the probe tree below the controls.</li>
+    </ol>
+    <p class="body-text">To remove everything and start over, click <strong>Clear All</strong>.</p>
+  </div>
+
+  <div class="section">
+    <div class="section-header">
+      <div class="step-chip info">&nbsp;</div>
+      <h2>Slice panel navigation</h2>
+    </div>
+    <p class="body-text">Three slice panels are shown: coronal (AP slice), sagittal (ML slice), and horizontal (DV slice). Probe trajectories appear on each panel as faint lines, with a bright dot at the slice intersection.</p>
+
+    <div class="feature-list">
+      <div class="feature-item">
+        <span class="feature-name">Move slice position</span>
+        <span class="feature-desc">Scroll the mouse wheel over a panel (50 µm per tick). Or type a value directly in the <strong>AP / ML / DV</strong> spinboxes in the sidebar.</span>
+      </div>
+      <div class="feature-item">
+        <span class="feature-name">Place crosshair</span>
+        <span class="feature-desc"><kbd>Left drag</kbd> on any panel to move the crosshair and navigate all three slices to that location simultaneously.</span>
+      </div>
+      <div class="feature-item">
+        <span class="feature-name">Pan a panel</span>
+        <span class="feature-desc"><kbd>Ctrl</kbd> + <kbd>Left drag</kbd> to pan the view without changing the slice position.</span>
+      </div>
+      <div class="feature-item">
+        <span class="feature-name">Orientation</span>
+        <span class="feature-desc">All panels use the lab's "surgeon's view": looking down on the brain from behind the animal. Horizontal: anterior at the top, the animal's right on screen-right. Coronal: dorsal up, right on right. Sagittal: dorsal up, anterior on the right. Urchin and Lasagna open in the same orientation.</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-header">
+      <div class="step-chip info">&nbsp;</div>
+      <h2>Probe tree: visibility and colors</h2>
+    </div>
+    <p class="body-text">The tree lists every loaded session, probe, and shank. Each entry has a color swatch on the right.</p>
+    <div class="feature-list">
+      <div class="feature-item">
+        <span class="feature-name">Show / hide</span>
+        <span class="feature-desc">Check or uncheck any item in the tree. Checking a session or probe row toggles all its shanks at once. Use <strong>Check All</strong> / <strong>Uncheck All</strong> to toggle everything.</span>
+      </div>
+      <div class="feature-item">
+        <span class="feature-name">Recolor a session</span>
+        <span class="feature-desc"><kbd>Double-click</kbd> the color swatch on a session or probe row to open a color picker. All shanks in that group update together.</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- URCHIN -->
+  <div class="section">
+    <div class="section-header">
+      <div class="step-chip">5</div>
+      <h2>Open the 3D Urchin view</h2>
+    </div>
+    <p class="body-text">The Urchin 3D view is optional. Load probe sessions first, then:</p>
+    <ol class="steps">
+      <li>In the <strong>Atlas</strong> dropdown (top bar), confirm <em>CCF 25 µm</em> is selected (the default).</li>
+      <li>Click <strong>1. Open Urchin</strong>. A browser tab opens automatically at the Urchin renderer and the 3D brain loads. This takes a few seconds.</li>
+      <li>Once the status bar shows <em>Urchin ready</em>, loaded probe trajectories appear in the 3D view automatically.</li>
+      <li>Use the <strong>Brain alpha</strong> slider (top bar) to adjust the transparency of the grey brain surface.</li>
+      <li>Urchin opens looking down on the top of the brain, anterior at the top, the animal's right on screen-right. If you rotate the brain by dragging, click <strong>Reset view</strong> to return to this orientation.</li>
+    </ol>
+    <div class="note">The brain is nearly symmetric, so after rotating it is easy to misread which hemisphere a probe is in. Use <strong>Reset view</strong>, or check the axes cross at the top of the Urchin window: its blue arm points toward the animal's left.</div>
+    <div class="note">The atlas selector is locked once Urchin is open. Choose the atlas before clicking Open Urchin.</div>
+  </div>
+
+  <!-- BRAIN REGIONS -->
+  <div class="section">
+    <div class="section-header">
+      <div class="step-chip">6</div>
+      <h2>Highlight brain regions</h2>
+    </div>
+    <p class="body-text">After Urchin is open, use the <strong>Brain Regions</strong> section at the bottom of the sidebar to highlight CCF brain areas in the 3D view. Regions appear with their canonical Allen Brain Atlas colors as solid opaque meshes.</p>
+    <ol class="steps">
+      <li>Type one or more CCF acronyms in the text box, separated by commas, for example: <code>VISam, FN, CA1</code></li>
+      <li>Press <kbd>Enter</kbd> or click <strong>Add</strong>. The regions appear in the 3D view immediately.</li>
+      <li>To remove a single region, <strong>right-click</strong> its name in the list and choose <em>Remove region</em>.</li>
+      <li>To remove all highlighted regions at once, click <strong>Clear All Regions</strong>.</li>
+    </ol>
+    <div class="note">Acronyms are case-sensitive and must match the Allen CCF exactly (e.g. <code>VISam</code> not <code>visam</code>). If an acronym isn't recognised, the status bar will say <em>Not found in atlas</em>.</div>
+  </div>
+
+  <!-- LASAGNA -->
+  <div class="group-label">Histology in Lasagna</div>
+
+  <div class="section">
+    <div class="section-header">
+      <div class="step-chip">7</div>
+      <h2>Install and update Lasagna</h2>
+    </div>
+    <p class="body-text">The lab uses a modified Lasagna that opens registered histology in the same orientation as the trajectory viewer. Install it once, in its own conda environment (not <code>iblenv</code>):</p>
+    <pre>conda create -n lasagna python=3.11
+conda activate lasagna
+pip install git+https://github.com/kimiline/lasagna.git</pre>
+    <p class="body-text">To launch it:</p>
+    <pre>conda activate lasagna
+lasagna</pre>
+    <p class="body-text">To update to the latest version:</p>
+    <pre>conda activate lasagna
+pip install --upgrade --force-reinstall --no-deps git+https://github.com/kimiline/lasagna.git</pre>
+  </div>
+
+  <div class="section">
+    <div class="section-header">
+      <div class="step-chip">8</div>
+      <h2>Open histology stacks</h2>
+    </div>
+    <ol class="steps">
+      <li>Press <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>O</kbd> (or <strong>File &gt; Load ingredient &gt; Open multiple stacks</strong>) and select both channel files, e.g. <code>STD_ds_KM_077_GR.tif</code> and <code>STD_ds_KM_077_RD.tif</code>.</li>
+      <li>A dialog lists each file with a color. Colors are picked from the file name (<code>GR</code> green, <code>RD</code> red); change any that are wrong, then click <strong>OK</strong>.</li>
+      <li>The stacks open in surgeon's view, and the status bar confirms it. The file dialog remembers the last folder you used.</li>
+    </ol>
+    <p class="body-text">To open a single stack instead, press <kbd>Ctrl</kbd> + <kbd>O</kbd>.</p>
+  </div>
+
+  <div class="section">
+    <div class="section-header">
+      <div class="step-chip info">&nbsp;</div>
+      <h2>Lasagna navigation and orientation</h2>
+    </div>
+    <div class="feature-list">
+      <div class="feature-item">
+        <span class="feature-name">Zoom</span>
+        <span class="feature-desc">Scroll the mouse wheel over a panel.</span>
+      </div>
+      <div class="feature-item">
+        <span class="feature-name">Step through slices</span>
+        <span class="feature-desc"><kbd>Ctrl</kbd> + scroll. Add <kbd>Shift</kbd> to move 5 slices at a time.</span>
+      </div>
+      <div class="feature-item">
+        <span class="feature-name">Pan</span>
+        <span class="feature-desc"><kbd>Left drag</kbd>. The other panels pan with it.</span>
+      </div>
+      <div class="feature-item">
+        <span class="feature-name">Jump to a point</span>
+        <span class="feature-desc"><kbd>Ctrl</kbd> + <kbd>Left drag</kbd> in one panel moves the other two panels to that location.</span>
+      </div>
+      <div class="feature-item">
+        <span class="feature-name">Reset zoom</span>
+        <span class="feature-desc"><kbd>Ctrl</kbd> + <kbd>R</kbd></span>
+      </div>
+      <div class="feature-item">
+        <span class="feature-name">Flip a view</span>
+        <span class="feature-desc">On the <strong>Axis</strong> tab, use <strong>Flip A-P</strong>, <strong>Flip L-R</strong> or <strong>Flip D-V</strong>. Flips change only the display, never the data, so traced points stay correct.</span>
+      </div>
+      <div class="feature-item">
+        <span class="feature-name">Quit</span>
+        <span class="feature-desc"><kbd>Ctrl</kbd> + <kbd>Q</kbd></span>
+      </div>
+    </div>
+    <div class="note">Registered TIFFs (<code>STD_ds_*</code>, brainreg output) are stored posterior-first, and Lasagna corrects for this automatically, the same way IBL's alignment GUI does. If a stack ever opens with the olfactory bulbs at the bottom of the horizontal view, click <strong>Flip A-P</strong>.</div>
+  </div>
+
+</div>
+</body>
+</html>
