@@ -237,6 +237,7 @@ class UrchinViewerWindow(QtWidgets.QMainWindow):
         self._sessions_map: dict[str, str] = {}
         self._data: list[dict] = []
         self._urchin_ready = False
+        self._urchin_cam = None
         self._atlas = urchin.ccf25
         self._highlighted_acronyms: list[str] = []
 
@@ -282,6 +283,14 @@ class UrchinViewerWindow(QtWidgets.QMainWindow):
         self.open_btn.setMinimumHeight(28)
         self.open_btn.clicked.connect(self._open_urchin)
         top.addWidget(self.open_btn)
+
+        self.reset_view_btn = QtWidgets.QPushButton("Reset view")
+        self.reset_view_btn.setMinimumHeight(28)
+        self.reset_view_btn.setToolTip(
+            "Return Urchin to the top-down view: anterior up, animal's right on screen right")
+        self.reset_view_btn.setEnabled(False)
+        self.reset_view_btn.clicked.connect(self._reset_urchin_view)
+        top.addWidget(self.reset_view_btn)
 
         top.addSpacing(8)
         top.addWidget(QtWidgets.QLabel("Brain alpha:"))
@@ -405,7 +414,8 @@ class UrchinViewerWindow(QtWidgets.QMainWindow):
         vlay.addLayout(ca_row)
 
         urchin_note = QtWidgets.QLabel(
-            "<small><i>Urchin view: posterior view — left=left, anterior away</i></small>")
+            "<small><i>Urchin and horizontal panel: top-down view, anterior up, "
+            "animal's right on screen right</i></small>")
         urchin_note.setWordWrap(True)
         vlay.addWidget(urchin_note)
 
@@ -705,21 +715,25 @@ class UrchinViewerWindow(QtWidgets.QMainWindow):
                 self._atlas.set_alphas([root_mesh], [alpha])
         except Exception:
             pass
-        # Matches horizontal slice panel orientation.
-        # Pinpoint displays rotation as [yaw, pitch, roll]; oursin API takes [pitch, yaw, roll].
-        # [180, 0, 0] = pitch 180 -> Pinpoint shows "0, 180, 0".
-        try:
-            cam = urchin.camera.Camera(main=True)
-            cam.set_rotation([180, 0, 0])
-        except Exception:
-            pass
+        self._reset_urchin_view()
         self._urchin_ready = True
+        self.reset_view_btn.setEnabled(True)
         self.atlas_combo.setEnabled(False)
         self.open_btn.setText("Urchin Open")
         self.statusBar().showMessage(
             "Urchin ready. Add a session to render probes.")
         if self._data:
             self._render_probes()
+
+    def _reset_urchin_view(self):
+        # Surgeon's view: top-down, anterior up, animal's right on screen right
+        # (verified with a right-hemisphere-only VISp mesh; matches the horizontal panel).
+        try:
+            if self._urchin_cam is None:
+                self._urchin_cam = urchin.camera.Camera(main=True)
+            self._urchin_cam.set_rotation([0, 0, 0])
+        except Exception:
+            pass
 
     def _on_alpha_changed(self, val: int):
         alpha = val / 100.0
@@ -1003,7 +1017,6 @@ class UrchinViewerWindow(QtWidgets.QMainWindow):
         self.ba.plot_sslice(ml_m, ax=self.ax_sag)
         self.ax_sag.invert_xaxis()
         self.ba.plot_hslice(dv_m, ax=self.ax_hor)
-        self.ax_hor.invert_yaxis()
 
         self._label_axes()
         self.ax_cor.set_title(
