@@ -246,19 +246,20 @@ ol.steps {
 
 ol.steps li {
   counter-increment: stepcount;
-  display: grid;
-  grid-template-columns: 20px 1fr;
-  gap: 10px;
+  position: relative;
+  padding-left: 30px;
   font-size: 14.5px;
   line-height: 1.6;
 }
 
 ol.steps li::before {
   content: counter(stepcount) ".";
+  position: absolute;
+  left: 0;
+  top: 1px;
   color: var(--accent);
   font-weight: 600;
   font-size: 13px;
-  padding-top: 2px;
 }
 
 /* Feature rows */
