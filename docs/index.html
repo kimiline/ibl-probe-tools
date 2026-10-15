@@ -550,6 +550,39 @@ pip install --upgrade --force-reinstall --no-deps git+https://github.com/kimilin
     <div class="note">Registered TIFFs (<code>STD_ds_*</code>, brainreg output) are stored posterior-first, and Lasagna corrects for this automatically, the same way IBL's alignment GUI does. If a stack ever opens with the olfactory bulbs at the bottom of the horizontal view, click <strong>Flip A-P</strong>.</div>
   </div>
 
+  <!-- REGISTER TO ALYX -->
+  <div class="group-label">Registering tracks to Alyx</div>
+
+  <div class="section">
+    <div class="section-header">
+      <div class="step-chip">9</div>
+      <h2>Upload traced tracks to Alyx</h2>
+    </div>
+    <p class="body-text">Uploads go to the <strong>shared IBL Alyx database</strong>, not just your computer. The registration window checks every file first and shows exactly what it will write before anything is uploaded.</p>
+    <ol class="steps">
+      <li>Save each traced points layer in Lasagna with the standard name, for example <code>2026-05-21_KM_077_001_probe00a_pts.csv</code>.</li>
+      <li>On the <strong>Points</strong> tab, click <strong>Register tracks to Alyx...</strong> under the Name list. The first time, choose the <code>iblenv3.11</code> python and then <code>register_tracks_alyx.py</code>; Lasagna remembers both.</li>
+      <li>The window lists every <code>_pts.csv</code> file in the folder, with a Status and Details for each. Tick the files to upload, or click <strong>Check all boxes for upload</strong>.</li>
+      <li>Click <strong>Upload checked tracks...</strong>, read the review screen, and confirm. If any track has warnings, tick the acknowledgement box first.</li>
+      <li>Check the result in the Alyx admin pages (experiments &gt; trajectory estimates, search the subject). Each upload is also recorded in <code>alyx_track_upload_log.csv</code> next to the files.</li>
+    </ol>
+    <div class="feature-list">
+      <div class="feature-item">
+        <span class="feature-name">Blocked</span>
+        <span class="feature-desc">Cannot be ticked. The file name is not in the standard form, there is no matching session or probe in Alyx (the tool never creates one), the track is closer to another probe's plan, it is in the wrong hemisphere, or the points are unusable. Fix the cause and click <strong>Re-check</strong>.</span>
+      </div>
+      <div class="feature-item">
+        <span class="feature-name">Warning</span>
+        <span class="feature-desc">Can be uploaded after you acknowledge it. Examples: a track or ephys alignment already exists for the probe, the shank order differs from the plan (a possible A/D label swap), or the track is far from its plan.</span>
+      </div>
+      <div class="feature-item">
+        <span class="feature-name">OK</span>
+        <span class="feature-desc">Every check passed.</span>
+      </div>
+    </div>
+    <div class="note">The tool needs ONE-api 3.4 or newer, so it runs in <code>iblenv3.11</code>. With an older ONE it explains the problem and disables uploading instead of failing partway through.</div>
+  </div>
+
 </div>
 </body>
 </html>
