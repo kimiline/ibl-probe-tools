@@ -77,6 +77,10 @@ class FakeAlyx:
             elif k == 'subject' and 'session' in rec and isinstance(rec['session'], dict):
                 if rec['session']['subject'] != v:
                     return False
+            elif k == 'subject' and 'session' in rec:
+                ses = next((s for s in self.sessions if s['id'] == rec['session']), {})
+                if ses.get('subject') != v:
+                    return False
             elif k == 'session':
                 if rta._session_id(rec) != v:
                     return False
@@ -361,6 +365,144 @@ class UploadTests(unittest.TestCase):
         self.assertIn(self.review.sha256, rows[1])
 
 
+def store_picks(alyx, name, rows, eid=EID):
+    """Put a Lasagna track into a fake insertion's json, exactly as ibllib's register_track stores it."""
+    from ibllib.pipes.histology import load_track_csv
+    with tempfile.TemporaryDirectory() as d:
+        p = write(d, 'tmp_pts.csv', rows)
+        picks = np.int32(load_track_csv(p, brain_atlas=ALLEN) * 1e6).tolist()
+    ins = next(i for i in alyx.insertions if i['name'] == name and i['session'] == eid)
+    ins['json'] = {'xyz_picks': picks}
+    alyx.trajectories = [t for t in alyx.trajectories
+                         if not (t.get('probe_insertion') == ins['id'] and t['provenance'] == 'Histology track')]
+    alyx.trajectories.append({'id': f"traj-{ins['id']}", 'provenance': 'Histology track', 'session': SESSIONS[eid],
+                              'probe_insertion': ins['id']})
+    return picks
+
+
+class ExportTests(unittest.TestCase):
+    def setUp(self):
+        import export_tracks_alyx as eta
+        self.eta = eta
+        self.tmp = tempfile.TemporaryDirectory()
+        self.out = Path(self.tmp.name) / 'from_alyx'
+        self.alyx = FakeAlyx()
+        self.picks = {s: store_picks(self.alyx, f'probe00{s}', lasagna_points(plan(f'probe00{s}'))) for s in 'abcd'}
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def export(self, **kw):
+        res = self.eta.export_subject(self.alyx, 'KM_077', ALLEN, self.out, **kw)
+        self.assertEqual(self.alyx.writes, [])
+        return res
+
+    def test_exported_files_reproduce_stored_picks(self):
+        from ibllib.pipes.histology import load_track_csv
+        res = self.export()
+        written = [r for r in res if r.status == 'written']
+        self.assertEqual(sorted(r.probe for r in written), [f'probe00{s}' for s in 'abcd'])
+        for r in written:
+            self.assertEqual(r.path.name, f'2026-05-21_KM_077_001_{r.probe}_pts.csv')
+            back = np.int32(load_track_csv(r.path, brain_atlas=ALLEN) * 1e6).tolist()
+            self.assertEqual(back, self.picks[r.probe[-1]])
+        self.assertTrue(all(r.status.startswith('skipped: no stored') for r in res if r.status != 'written'))
+        self.assertEqual(len((self.out / self.eta.MANIFEST).read_text().splitlines()), 5)
+
+    def test_export_matches_original_lasagna_rows(self):
+        original = lasagna_points(plan('probe00a'))
+        self.export(probes=['probe00a'])
+        exported = np.loadtxt(self.out / '2026-05-21_KM_077_001_probe00a_pts.csv', delimiter=',')
+        self.assertEqual(sorted(map(tuple, exported)), sorted(map(tuple, original)))
+
+    def test_rerun_is_unchanged_and_never_overwrites_a_different_file(self):
+        self.export()
+        target = self.out / '2026-05-21_KM_077_001_probe00b_pts.csv'
+        target.write_text("1.0,2.0,3.0\n")                    # e.g. a file the user already relabeled
+        res = {r.probe: r.status for r in self.export()}
+        self.assertEqual(res['probe00a'], 'unchanged')
+        self.assertTrue(res['probe00b'].startswith('skipped: a different file'))
+        self.assertEqual(target.read_text(), "1.0,2.0,3.0\n")
+
+    def test_filters(self):
+        res = self.export(dates=['2026-05-21'], probes=['probe00c'])
+        self.assertEqual([r.probe for r in res], ['probe00c'])
+        self.assertEqual(self.export(dates=['2026-05-22']), [])
+
+    def test_exported_files_pass_review_as_identical_to_alyx(self):
+        self.export()
+        reviews = rta.review_all(sorted(self.out.glob('*_pts.csv')), self.alyx, ALLEN, NEEDLES)
+        for r in reviews:
+            self.assertEqual(np.int32(r.picks * 1e6).tolist(), self.picks[r.shank], r.path.name)
+
+    def test_default_out_dir_is_relative_to_current_folder(self):
+        self.assertEqual(self.eta.default_out_dir('KM_077'), Path.cwd() / 'KM_077_from_alyx')
+        self.assertNotIn('flatiron', Path(self.eta.__file__).read_text())
+
+    def test_one_bad_probe_does_not_stop_the_subject(self):
+        ins = next(i for i in self.alyx.insertions if i['name'] == 'probe00b' and i['session'] == EID)
+        ins['json'] = {'xyz_picks': [[90_000_000, 0, -1000], [90_000_000, 0, -2000]]}   # far outside the atlas
+        res = {r.probe: r.status for r in self.export()}
+        self.assertTrue(res['probe00b'].startswith('skipped: stored points could not be converted'), res['probe00b'])
+        self.assertEqual([p for p, s in res.items() if s == 'written'], ['probe00a', 'probe00c', 'probe00d'])
+
+
+class AlreadyInAlyxTests(unittest.TestCase):
+    """Downloaded files that were not relabeled must not be uploadable; relabeled ones must be."""
+
+    def setUp(self):
+        import export_tracks_alyx as eta
+        self.eta = eta
+        self.tmp = tempfile.TemporaryDirectory()
+        self.out = Path(self.tmp.name) / 'from_alyx'
+        self.alyx = FakeAlyx()
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def store(self, mapping):
+        """mapping: Alyx shank letter -> shank whose planned track is actually stored there."""
+        for s, src in mapping.items():
+            store_picks(self.alyx, f'probe00{s}', lasagna_points(plan(f'probe00{src}')))
+        self.eta.export_subject(self.alyx, 'KM_077', ALLEN, self.out)
+
+    def swap(self, x, y):
+        a = self.out / f'2026-05-21_KM_077_001_probe00{x}_pts.csv'
+        b = self.out / f'2026-05-21_KM_077_001_probe00{y}_pts.csv'
+        tmp = a.with_suffix('.tmp')
+        a.rename(tmp); b.rename(a); tmp.rename(b)
+
+    def review(self):
+        return {r.probe: r for r in rta.review_all(sorted(self.out.glob('*_pts.csv')), self.alyx, ALLEN, NEEDLES)}
+
+    def test_unchanged_downloads_are_already_in_alyx_and_cannot_be_uploaded(self):
+        self.store({s: s for s in 'abcd'})
+        reviews = self.review()
+        self.assertEqual({r.status for r in reviews.values()}, {rta.SAME})
+        self.assertFalse(any('will be replaced' in d for r in reviews.values() for d in r.details))
+        with self.assertRaisesRegex(RuntimeError, 'refusing'):
+            rta.upload_track(reviews['probe00a'], mock.Mock(alyx=self.alyx), ALLEN)
+
+    def test_relabeling_a_fully_reversed_probe(self):
+        self.store({'a': 'd', 'b': 'c', 'c': 'b', 'd': 'a'})
+        before = self.review()
+        self.assertTrue(all(r.status == rta.SAME for r in before.values()))
+        self.assertTrue(all(any('shank order' in d for d in r.details) for r in before.values()))
+        self.swap('a', 'd'); self.swap('b', 'c')
+        after = self.review()
+        self.assertEqual({r.status for r in after.values()}, {rta.WARN}, {p: r.details for p, r in after.items()})
+        self.assertFalse(any('shank order' in d for r in after.values() for d in r.details))
+
+    def test_relabeling_two_shanks_keeps_the_other_two_in_the_order_check(self):
+        self.store({'a': 'd', 'b': 'b', 'c': 'c', 'd': 'a'})
+        self.swap('a', 'd')
+        after = self.review()
+        self.assertEqual({p: r.status for p, r in after.items()},
+                         {'probe00a': rta.WARN, 'probe00b': rta.SAME, 'probe00c': rta.SAME, 'probe00d': rta.WARN})
+        self.assertFalse(any('shank order' in d for r in after.values() for d in r.details))
+        self.assertFalse(any('shank identity not verified' in d for r in after.values() for d in r.details))
+
+
 class WindowTests(unittest.TestCase):
     """The real window, offscreen, with the fake Alyx and a fake ONE."""
 
@@ -411,6 +553,49 @@ class WindowTests(unittest.TestCase):
         self.assertEqual([line.split(',')[-1] for line in log[1:]],
                          ['started', 'uploaded and verified (384 channels)'])
         self.assertTrue(all(c.isEnabled() for c in self.win.controls))
+
+    def test_download_button_writes_to_from_alyx_folder(self):
+        sub = Path(self.tmp.name) / 'KM_077' / 'electrodetracks'
+        sub.mkdir(parents=True)
+        self.win.folder = sub
+        store_picks(self.alyx, 'probe00a', lasagna_points(plan('probe00a')))
+        with mock.patch.object(self.QtWidgets.QInputDialog, 'getText', return_value=('KM_077', True)) as ask, \
+                mock.patch.object(self.QtWidgets.QMessageBox, 'question',
+                                  return_value=self.QtWidgets.QMessageBox.Yes):
+            self.win._download()
+        self.assertEqual(ask.call_args.kwargs.get('text'), 'KM_077')
+        self.assertTrue((sub / 'from_alyx' / '2026-05-21_KM_077_001_probe00a_pts.csv').exists())
+        self.assertEqual(self.win.folder, sub / 'from_alyx')
+        self.assertEqual(list(self.win.reviews), [str(sub / 'from_alyx' / '2026-05-21_KM_077_001_probe00a_pts.csv')])
+        self.assertTrue(all(c.isEnabled() for c in self.win.controls))
+
+    def test_download_asks_where_when_folder_is_not_the_subjects(self):
+        store_picks(self.alyx, 'probe00a', lasagna_points(plan('probe00a')))
+        elsewhere = Path(self.tmp.name) / 'chosen'
+        elsewhere.mkdir()
+        Q = self.QtWidgets
+        with mock.patch.object(Q.QInputDialog, 'getText', return_value=('KM_077', True)), \
+                mock.patch.object(Q.QFileDialog, 'getExistingDirectory', return_value='') as pick:
+            self.win._download()
+        pick.assert_called_once()
+        self.assertFalse(any(Path(self.tmp.name).rglob('from_alyx')))
+        with mock.patch.object(Q.QInputDialog, 'getText', return_value=('KM_077', True)), \
+                mock.patch.object(Q.QFileDialog, 'getExistingDirectory', return_value=str(elsewhere)), \
+                mock.patch.object(Q.QMessageBox, 'question', return_value=Q.QMessageBox.No):
+            self.win._download()
+        self.assertTrue((elsewhere / 'from_alyx' / '2026-05-21_KM_077_001_probe00a_pts.csv').exists())
+
+    def test_already_in_alyx_rows_cannot_be_ticked(self):
+        import export_tracks_alyx as eta
+        for s in 'abcd':
+            store_picks(self.alyx, f'probe00{s}', lasagna_points(plan(f'probe00{s}')))
+        out = Path(self.tmp.name) / 'from_alyx'
+        eta.export_subject(self.alyx, 'KM_077', ALLEN, out)
+        self.win.folder = out
+        self.win._review(sorted(out.glob('*_pts.csv')))
+        self.win._set_all(True)
+        self.assertEqual(self.win._checked_paths(), [])
+        self.assertTrue(all(r.status == rta.SAME for r in self.win.reviews.values()))
 
     def test_login_mismatch_uploads_nothing(self):
         from qtpy import QtCore

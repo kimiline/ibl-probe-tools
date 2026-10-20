@@ -582,7 +582,17 @@ pip install --upgrade --force-reinstall --no-deps git+https://github.com/kimilin
         <span class="feature-name">OK</span>
         <span class="feature-desc">Every check passed.</span>
       </div>
+      <div class="feature-item">
+        <span class="feature-name">Already in Alyx</span>
+        <span class="feature-desc">The file's points are identical to the track already stored for that probe, so there is nothing to upload and it cannot be ticked.</span>
+      </div>
     </div>
+    <h3 class="body-text"><strong>Fixing shank labels on tracks already in Alyx</strong></h3>
+    <ol class="steps">
+      <li>Open the subject's <code>electrodetracks</code> folder in the window and click <strong>Download from Alyx...</strong>. The stored tracks are saved, with their current labels, in a <code>from_alyx</code> folder inside it, separate from your original tracings.</li>
+      <li>Rename the files of the probe you are correcting, for example swap <code>a</code> with <code>d</code> and <code>b</code> with <code>c</code>, then click <strong>Re-check</strong>.</li>
+      <li>Only the renamed files become uploadable. Check that the shank-order warning is gone, then upload them together. Re-uploading replaces the old histology tracks, so any ephys alignment on those probes will need redoing.</li>
+    </ol>
     <div class="note">The tool needs ONE-api 3.4 or newer, so it runs in <code>iblenv3.11</code>. With an older ONE it explains the problem and disables uploading instead of failing partway through.</div>
   </div>
 

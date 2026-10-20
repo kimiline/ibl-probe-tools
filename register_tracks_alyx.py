@@ -43,6 +43,8 @@ NAME_RE = re.compile(
     r"(?P<probe>probe\d{2}[a-z]?)_pts(?P<ext>(\.csv)+)$")
 
 OK, WARN, BLOCK = "OK", "Warning", "Blocked"
+SAME = "Already in Alyx"     # identical to the stored track: nothing to upload
+UPLOADABLE = (OK, WARN)
 
 
 @dataclass
@@ -65,12 +67,22 @@ class TrackReview:
     own_plan_um: float | None = None         # median distance to the closest planned shank of this probe
     has_histology: bool = False
     has_alignment: bool = False
+    identical_in_alyx: bool = False
     blocks: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
 
     @property
     def status(self) -> str:
-        return BLOCK if self.blocks else WARN if self.warnings else OK
+        if self.blocks:
+            return BLOCK
+        if self.identical_in_alyx:
+            return SAME
+        return WARN if self.warnings else OK
+
+    @property
+    def details(self) -> list[str]:
+        same = ["identical to the track already stored in Alyx for this probe; nothing to upload"]
+        return self.blocks + (same if self.identical_in_alyx and not self.blocks else []) + self.warnings
 
     @property
     def probe_root(self) -> str:
@@ -258,17 +270,20 @@ def review_track(path: Path, alyx, allen, needles, cache: dict | None = None) ->
                                  no_cache=True)
             if t.get('probe_insertion') == r.pid and t.get('provenance') == 'Histology track']
     r.has_histology = len(hist) > 0
+    stored = (ins.get('json') or {}).get('xyz_picks')
+    r.identical_in_alyx = bool(r.has_histology and stored and sorted(map(tuple, stored)) ==
+                               sorted(map(tuple, np.int32(r.picks * 1e6).tolist())))
     if len(hist) > 1:
         r.blocks.append(f"{len(hist)} histology tracks already exist for this probe; ibllib would only replace one. "
                         f"Clean this up in Alyx first")
-    elif hist:
+    elif hist and not r.identical_in_alyx:
         r.warnings.append("a histology track already exists for this probe and will be replaced")
     aligned = [t for t in alyx.rest('trajectories', 'list', probe_insertion=r.pid,
                                     provenance='Ephys aligned histology track', no_cache=True)
                if t.get('probe_insertion') == r.pid and t.get('provenance') == 'Ephys aligned histology track']
     qc = (ins.get('json') or {}).get('extended_qc', {}) or {}
     r.has_alignment = len(aligned) > 0 or (qc.get('alignment_count') or 0) > 0
-    if r.has_alignment:
+    if r.has_alignment and not r.identical_in_alyx:
         resolved = " (resolved)" if qc.get('alignment_resolved') else ""
         r.warnings.append(f"this probe has an ephys alignment{resolved}; replacing its picks may invalidate it")
     return r
@@ -361,8 +376,8 @@ def rest_problem(alyx, raise_error=False) -> str:
 def upload_track(r: TrackReview, one, allen) -> str:
     """Register one reviewed track with ibllib, then read it back to confirm. Returns a short result."""
     from ibllib.pipes.histology import register_track
-    if r.status == BLOCK or r.pid is None or r.picks is None:
-        raise RuntimeError("refusing to upload a blocked track")
+    if r.status not in UPLOADABLE or r.pid is None or r.picks is None:
+        raise RuntimeError(f"refusing to upload a track whose status is {r.status!r}")
     if file_sha256(r.path) != r.sha256:
         raise RuntimeError("the file changed after it was checked; click Re-check")
     rest_problem(one.alyx, raise_error=True)    # fail before ibllib's first write, not halfway through
@@ -465,7 +480,7 @@ def _gui():
             except Exception as exc:
                 self.status_lbl.setText(f"Login failed: {exc}")
 
-    STATUS_COLORS = {OK: '#d8f0d8', WARN: '#fbe8c0', BLOCK: '#f6d0d0'}
+    STATUS_COLORS = {OK: '#d8f0d8', WARN: '#fbe8c0', BLOCK: '#f6d0d0', SAME: '#e3e6ea'}
     COLUMNS = ["Upload", "File", "Session", "Probe", "Points", "Hemisphere", "Deepest region",
                "Distance to plan", "Already in Alyx", "Status", "Details"]
     PATH_ROLE = QtCore.Qt.UserRole
@@ -529,7 +544,12 @@ def _gui():
             b_files.clicked.connect(self._choose_files)
             b_recheck = QtWidgets.QPushButton("Re-check")
             b_recheck.clicked.connect(lambda: self._review([Path(p) for p in self.reviews]))
+            self.b_download = QtWidgets.QPushButton("Download from Alyx...")
+            self.b_download.setToolTip("Save the tracks already stored in Alyx for a subject as _pts.csv files "
+                                       "in a separate from_alyx folder (reads Alyx only)")
+            self.b_download.clicked.connect(self._download)
             top.addWidget(b_folder); top.addWidget(b_files); top.addWidget(b_recheck)
+            top.addWidget(self.b_download)
             top.addSpacing(12); top.addWidget(self.folder_lbl, 1)
             lay.addLayout(top)
 
@@ -553,12 +573,14 @@ def _gui():
             lay.addWidget(QtWidgets.QLabel(
                 "<small>Blocked tracks cannot be uploaded; fix the problem in Details and click Re-check. "
                 "Nothing is written to Alyx until you confirm in the review dialog.</small>"))
-            self.controls = [b_folder, b_files, b_recheck, b_all, b_none, self.b_upload, self.table]
+            self.controls = [b_folder, b_files, b_recheck, self.b_download, b_all, b_none, self.b_upload,
+                             self.table]
 
             problem = rest_problem(self.alyx)
             if problem:
                 self.rest_ok = False
                 self.b_upload.setEnabled(False)
+                self.b_download.setEnabled(False)
                 QtWidgets.QMessageBox.critical(self, "Alyx is not reachable from this ONE version", problem)
                 self.statusBar().showMessage(problem)
             elif self.folder:
@@ -571,7 +593,63 @@ def _gui():
                 c.setEnabled(not busy)
             if not self.rest_ok:
                 self.b_upload.setEnabled(False)
+                self.b_download.setEnabled(False)
             QtWidgets.QApplication.processEvents()
+
+        def _download(self):
+            from export_tracks_alyx import export_subject
+            guess = ""
+            if self.folder is not None:
+                parts = self.folder.parts
+                if self.folder.name == 'electrodetracks':
+                    guess = parts[-2]
+                elif self.folder.name == 'from_alyx' and len(parts) >= 3:
+                    guess = parts[-3]
+            subject, ok = QtWidgets.QInputDialog.getText(
+                self, "Download tracks from Alyx", "Subject whose stored tracks to download:", text=guess)
+            subject = subject.strip()
+            if not ok or not subject:
+                return
+            f = self.folder
+            if f is not None and f.name == 'electrodetracks' and f.parent.name == subject:
+                out = f / 'from_alyx'
+            elif f is not None and f.name == 'from_alyx' and f.parent.name == 'electrodetracks' \
+                    and f.parent.parent.name == subject:
+                out = f
+            else:
+                chosen = QtWidgets.QFileDialog.getExistingDirectory(
+                    self, f"Where should {subject}'s tracks go? (a from_alyx folder is created inside)",
+                    str(f or ''))
+                if not chosen:
+                    return
+                chosen = Path(chosen)
+                out = chosen if chosen.name == 'from_alyx' else chosen / 'from_alyx'
+            self._busy(True)
+            try:
+                self.statusBar().showMessage(f"Downloading {subject}'s tracks from Alyx...")
+                QtWidgets.QApplication.processEvents()
+                res = export_subject(self.alyx, subject, self.allen, out, server=self.server)
+            except Exception as e:
+                QtWidgets.QMessageBox.warning(self, "Download failed", f"{subject}: {e}")
+                return
+            finally:
+                self._busy(False)
+            n = {k: sum(r.status.startswith(k) for r in res) for k in ('written', 'unchanged', 'skipped')}
+            problems = [f"{r.date} {r.probe}: {r.status}" for r in res
+                        if r.status.startswith('skipped') and 'no stored track' not in r.status]
+            msg = (f"{n['written']} new file(s), {n['unchanged']} already there and unchanged, "
+                   f"{n['skipped'] - len(problems)} probe(s) with no stored track.\n\nSaved in:\n{out}")
+            if problems:
+                msg += "\n\nNot written:\n" + "\n".join(problems)
+            if not (n['written'] or n['unchanged']):
+                QtWidgets.QMessageBox.information(self, "Nothing downloaded", msg)
+                return
+            msg += "\n\nReview the downloaded files here now?"
+            if QtWidgets.QMessageBox.question(self, "Downloaded", msg) == QtWidgets.QMessageBox.Yes:
+                self.folder = out
+                self._review(sorted(out.glob('*_pts*.csv')))
+            else:
+                self.statusBar().showMessage(f"Downloaded {subject}'s tracks to {out}")
 
         def _choose_folder(self):
             d = QtWidgets.QFileDialog.getExistingDirectory(self, "Folder with _pts.csv files",
@@ -597,9 +675,9 @@ def _gui():
                 QtWidgets.QApplication.processEvents()
                 self.reviews = {str(r.path): r for r in review_all(paths, self.alyx, self.allen, self.needles)}
                 self._fill_table()
-                n = {s: sum(r.status == s for r in self.reviews.values()) for s in (OK, WARN, BLOCK)}
+                n = {s: sum(r.status == s for r in self.reviews.values()) for s in (OK, WARN, BLOCK, SAME)}
                 self.statusBar().showMessage(f"{len(self.reviews)} file(s): {n[OK]} OK, {n[WARN]} with warnings, "
-                                             f"{n[BLOCK]} blocked.")
+                                             f"{n[BLOCK]} blocked, {n[SAME]} already in Alyx unchanged.")
             finally:
                 self._busy(False)
 
@@ -609,17 +687,17 @@ def _gui():
                 box = QtWidgets.QTableWidgetItem()
                 box.setCheckState(QtCore.Qt.Unchecked)
                 box.setData(PATH_ROLE, str(r.path))
-                box.setFlags(QtCore.Qt.NoItemFlags if r.status == BLOCK
-                             else QtCore.Qt.ItemIsEnabled | QtCore.Qt.ItemIsUserCheckable)
+                box.setFlags(QtCore.Qt.ItemIsEnabled | QtCore.Qt.ItemIsUserCheckable if r.status in UPLOADABLE
+                             else QtCore.Qt.NoItemFlags)
                 self.table.setItem(row, 0, box)
                 existing = ", ".join(s for s, f in (("track", r.has_histology), ("alignment", r.has_alignment)) if f)
                 dist = "" if r.own_plan_um is None else f"{r.own_plan_um:.0f} um"
                 values = [r.path.name, r.session_label, r.probe, str(r.n_points or ""), r.hemisphere,
                           r.deepest_region, dist, existing or "no", r.status,
-                          "; ".join(r.blocks + r.warnings)]
+                          "; ".join(r.details)]
                 for col, v in enumerate(values, start=1):
                     it = QtWidgets.QTableWidgetItem(v)
-                    it.setToolTip("\n".join(r.blocks + r.warnings) or "All checks passed")
+                    it.setToolTip("\n".join(r.details) or "All checks passed")
                     if col == 9:
                         it.setBackground(QtGui.QColor(STATUS_COLORS[r.status]))
                         it.setFont(QtGui.QFont(it.font().family(), weight=QtGui.QFont.Bold))
@@ -638,7 +716,7 @@ def _gui():
                 box = self.table.item(row, 0)
                 path = box.data(PATH_ROLE)
                 r = self.reviews.get(path)
-                if r is not None and r.status != BLOCK and box.checkState() == QtCore.Qt.Checked:
+                if r is not None and r.status in UPLOADABLE and box.checkState() == QtCore.Qt.Checked:
                     out.append(path)
             return out
 
@@ -659,13 +737,13 @@ def _gui():
             fresh = {str(r.path): r for r in review_all([Path(p) for p in self.reviews], self.alyx,
                                                         self.allen, self.needles)}
             rows = [fresh[p] for p in chosen]
-            newly_blocked = [r for r in rows if r.status == BLOCK]
+            newly_blocked = [r for r in rows if r.status not in UPLOADABLE]
             self.reviews = fresh
             self._fill_table()
             if newly_blocked:
                 QtWidgets.QMessageBox.warning(self, "Checks changed",
-                                              "These tracks are now blocked; nothing was uploaded:\n" +
-                                              "\n".join(r.path.name for r in newly_blocked))
+                                              "These tracks can no longer be uploaded, so nothing was uploaded:\n" +
+                                              "\n".join(f"{r.path.name}: {r.status}" for r in newly_blocked))
                 return
             user = getattr(self.alyx, 'user', '')
             if ConfirmDialog(self.server, user, rows, self).exec_() != QtWidgets.QDialog.Accepted:

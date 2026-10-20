@@ -97,6 +97,8 @@ pip install --upgrade --force-reinstall --no-deps git+https://github.com/kimilin
 
 Everything is re-checked just before upload, then a review screen lists exactly what will be written. After each upload the tool reads the track back from Alyx to confirm it, and records it in `alyx_track_upload_log.csv` next to the files.
 
+**Downloading stored tracks** (for example to fix shank labels): click **Download from Alyx...** in the same window and enter a subject. Every track stored in Alyx for that subject is saved as a Lasagna `_pts.csv` file, named with its current Alyx label, in a `from_alyx` folder kept separate from the original tracings: inside the subject's `electrodetracks` folder if that is the folder open in the window, otherwise in a folder you choose. Each file is checked to reproduce the stored points exactly, existing files with different contents are never overwritten, a probe whose stored points cannot be converted is skipped without stopping the rest, and an `export_manifest.csv` records what was downloaded. Downloaded files you have not changed show as **Already in Alyx** and cannot be uploaded. To relabel a probe, rename its files (for example swap `a`/`d` and `b`/`c`) and click **Re-check**: only the renamed files become uploadable, and the shank-order check still uses all of the probe's shanks. From a terminal: `python export_tracks_alyx.py KM_048 --date 2025-06-03 --probe probe00 --out <folder>` (without `--out`, files go to `<current folder>/<subject>_from_alyx`).
+
 The tests run offline against a stand-in Alyx: `python tests/test_register_tracks_alyx.py -v`
 
 ## Known issues
