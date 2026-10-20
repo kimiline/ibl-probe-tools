@@ -5,9 +5,9 @@ Standalone GUI for viewing micro-manipulator electrode trajectories on Allen-atl
 
 Run
 ---
-    C:\\Users\\kimil\\anaconda3\\envs\\iblenv\\python.exe trajectory_viewer_local.py
+    C:\\Users\\kimil\\anaconda3\\envs\\iblenv3.11\\python.exe trajectory_viewer_local.py
 
-Requires iblenv conda env (iblatlas, one.api, qtpy, matplotlib).
+Requires Python >= 3.10 with ONE-api >= 3.4 (iblenv3.11), iblatlas, qtpy, matplotlib.
 """
 from __future__ import annotations
 

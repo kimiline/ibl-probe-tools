@@ -6,9 +6,9 @@ and displays them on coronal/sagittal/horizontal atlas slices.
 
 Run
 ---
-    C:\\Users\\kimil\\anaconda3\\envs\\iblenv\\python.exe trajectory_viewer_urchin.py
+    C:\\Users\\kimil\\anaconda3\\envs\\iblenv3.11\\python.exe trajectory_viewer_urchin.py
 
-Requires iblenv conda env (iblatlas, one.api, oursin, qtpy, matplotlib).
+Requires Python >= 3.10 with ONE-api >= 3.4 (iblenv3.11), iblatlas, oursin, qtpy, matplotlib.
 """
 from __future__ import annotations
 

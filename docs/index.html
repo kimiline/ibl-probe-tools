@@ -333,12 +333,15 @@ hr {
       <div class="step-chip info">!</div>
       <h2>Prerequisites</h2>
     </div>
-    <p class="body-text">You need the IBL <code>iblenv</code> conda environment. If you don't have it, follow the <a href="https://int-brain-lab.github.io/iblenv/install_doc.html" target="_blank">IBL ephys installation guide</a> first.</p>
-    <p class="body-text">You also need <strong>oursin 0.7.2</strong> installed in <code>iblenv</code>:</p>
-    <pre>conda activate iblenv
-pip install oursin==0.7.2</pre>
+    <p class="body-text">The viewer needs an IBL environment with Python 3.10 or newer and <strong>ONE-api 3.4 or newer</strong>. Older ONE versions can no longer query Alyx, so the subject list stays empty. In the lab this is <code>iblenv3.11</code>, the IBL alignment GUI's environment. If you have it, upgrade ONE there:</p>
+    <pre>conda activate iblenv3.11
+pip install "ONE-api>=3.4"</pre>
+    <p class="body-text">If you don't, create one (these commands have not yet been tested on a fresh machine):</p>
+    <pre>conda create -n iblenv3.11 python=3.11
+conda activate iblenv3.11
+pip install ibllib "ONE-api>=3.4" qtpy pyqt5 oursin==1.0.0</pre>
     <div class="note">After installing oursin, you must patch one line in its source file. Open:<br>
-      <code>…\anaconda3\envs\iblenv\Lib\site-packages\oursin\renderer.py</code><br>
+      <code>…\anaconda3\envs\iblenv3.11\Lib\site-packages\oursin\renderer.py</code><br>
       Find line 40 and change the URL to:<br>
       <code>client.sio.connect('https://pinpoint.allenneuraldynamics-test.org:5000')</code>
     </div>
@@ -362,7 +365,7 @@ pip install oursin==0.7.2</pre>
       <h2>Edit the launcher file</h2>
     </div>
     <p class="body-text">Open <code>trajectory_viewer_urchin.bat</code> in Notepad. Replace the username <code>kimil</code> with your own Windows username on the Python path line:</p>
-    <pre>C:\Users\YOUR_USERNAME\anaconda3\envs\iblenv\python.exe "%~dp0trajectory_viewer_urchin.py"</pre>
+    <pre>C:\Users\YOUR_USERNAME\anaconda3\envs\iblenv3.11\python.exe "%~dp0trajectory_viewer_urchin.py"</pre>
     <p class="body-text">If Anaconda is installed system-wide rather than per-user, the path may start with <code>C:\ProgramData\anaconda3\</code> instead.</p>
   </div>
 

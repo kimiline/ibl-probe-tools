@@ -13,13 +13,25 @@ Standalone GUI tools for visualising NP2.4 probe trajectories registered in IBL 
 
 ## Prerequisites
 
-- IBL `iblenv` conda environment: see the [IBL ephys installation guide](https://int-brain-lab.github.io/iblenv/install_doc.html)
-- `oursin` 0.7.2 (required for the Urchin viewer):
+The tools need different environments, because Alyx stopped serving the API description that ONE-api before 3.4 uses (every Alyx query then fails with `406 Not Acceptable`):
+
+| Tool | Environment |
+|------|-------------|
+| `trajectory_viewer_urchin.py`, `trajectory_viewer_local.py`, `register_tracks_alyx.py` | Python 3.10+ with **ONE-api 3.4 or newer**. In the lab this is `iblenv3.11`, the IBL alignment GUI's environment. |
+| `neuropixel_coordinates_local.py` | Still `iblenv` for now (see Known issues). |
+
+- If you already use the IBL alignment GUI, upgrade ONE in its environment:
   ```
-  conda activate iblenv
-  pip install oursin==0.7.2
+  conda activate iblenv3.11
+  pip install "ONE-api>=3.4"
   ```
-- After installing oursin, patch line 40 of `…/iblenv/Lib/site-packages/oursin/renderer.py`:
+- If you don't have such an environment, create one. These commands have not yet been tested on a fresh machine:
+  ```
+  conda create -n iblenv3.11 python=3.11
+  conda activate iblenv3.11
+  pip install ibllib "ONE-api>=3.4" qtpy pyqt5 oursin==1.0.0
+  ```
+- `oursin` (for the Urchin viewer; tested with 1.0.0): after installing it, patch line 40 of `…/iblenv3.11/Lib/site-packages/oursin/renderer.py` so it connects to the lab relay:
   ```python
   client.sio.connect('https://pinpoint.allenneuraldynamics-test.org:5000')
   ```
@@ -28,7 +40,7 @@ Standalone GUI tools for visualising NP2.4 probe trajectories registered in IBL 
 
 ### Windows
 
-Edit the `.bat` launcher for the tool you want to run and replace `kimil` with your Windows username, then double-click the `.bat` file.
+Edit the `.bat` launcher for the tool you want to run and replace `kimil` with your Windows username, then double-click the `.bat` file. The trajectory viewer and registration launchers point at `iblenv3.11`; the coordinates GUI launcher still points at `iblenv`. If your environment has a different name, change that part of the path too.
 
 ### macOS
 
@@ -74,12 +86,7 @@ pip install --upgrade --force-reinstall --no-deps git+https://github.com/kimilin
 
 `register_tracks_alyx.py` replaces ibllib's `register_lasagna_tracks_alyx.py` example. It uploads tracks to the **shared IBL Alyx database**, so it checks every file before anything is written.
 
-**Environment.** It needs ONE-api 3.4 or newer, because Alyx stopped serving the API description that older ONE versions use (every `rest()` call fails with `406 Not Acceptable`). `iblenv` runs Python 3.9 and cannot take ONE 3.x, so run the tool in `iblenv3.11` (the alignment GUI environment) after upgrading ONE there:
-
-```
-conda activate iblenv3.11
-pip install "ONE-api>=3.4"
-```
+**Environment.** Like the trajectory viewers, it runs in `iblenv3.11` with ONE-api 3.4 or newer (see Prerequisites).
 
 **Launch** it from the **Register tracks to Alyx...** button under the Name list on Lasagna's Points tab. The first time, Lasagna asks for the `iblenv3.11` python and for `register_tracks_alyx.py`, then remembers both. You can also double-click `register_tracks_alyx.bat` / `.command`.
 
@@ -92,7 +99,9 @@ Everything is re-checked just before upload, then a review screen lists exactly 
 
 The tests run offline against a stand-in Alyx: `python tests/test_register_tracks_alyx.py -v`
 
-**Known issue:** the trajectory viewers and the coordinates GUI run in `iblenv`, so their Alyx features hit the same `406` error until they are moved to an environment with ONE 3.4 or newer.
+## Known issues
+
+- `neuropixel_coordinates_local.py` still runs in `iblenv` (ONE 2.x), so its Alyx features (loading sessions, registering micro-manipulator coordinates) fail with the `406` error. It writes to Alyx, so it will be moved to the newer environment only after that write path has been tested.
 
 ## Updating these tools
 
