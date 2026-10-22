@@ -553,6 +553,28 @@ pip install --upgrade --force-reinstall --no-deps git+https://github.com/kimilin
     <div class="note">Registered TIFFs (<code>STD_ds_*</code>, brainreg output) are stored posterior-first, and Lasagna corrects for this automatically, the same way IBL's alignment GUI does. If a stack ever opens with the olfactory bulbs at the bottom of the horizontal view, click <strong>Flip A-P</strong>.</div>
   </div>
 
+  <div class="section">
+    <div class="section-header">
+      <div class="step-chip info">&nbsp;</div>
+      <h2>Points layers and tracing tracks</h2>
+    </div>
+    <div class="feature-list">
+      <div class="feature-item">
+        <span class="feature-name">Select several layers</span>
+        <span class="feature-desc">On the <strong>Points</strong> tab, <kbd>Ctrl</kbd> + click or <kbd>Shift</kbd> + click layers in the list. Marker size, alpha, line width, symbol and color then change for all selected layers, and right-click <strong>Save</strong> or <strong>Delete</strong> acts on all of them.</span>
+      </div>
+      <div class="feature-item">
+        <span class="feature-name">Open, Close, Close all</span>
+        <span class="feature-desc"><strong>Open...</strong> under the list opens the sparse point reader. <strong>Close</strong> removes the selected layers; <strong>Close all</strong> removes every layer. Closing discards unsaved points, so closing more than one layer asks you to confirm.</span>
+      </div>
+      <div class="feature-item">
+        <span class="feature-name">Trace a track</span>
+        <span class="feature-desc">Turn on <strong>Plugins &gt; annotation_plugins &gt; add_line_plugin</strong>. The <strong>Add lines</strong> panel opens at the bottom of the Points tab. Left-click in a view to add points, pick a fit type, type a name, and click <strong>Add line</strong> to keep the points and fit as new layers (<code>&lt;name&gt;_pts</code> and <code>&lt;name&gt;_fit</code>). <strong>Clear</strong> starts over, and the panel's <strong>Close</strong> button turns the plugin off.</span>
+      </div>
+    </div>
+    <div class="note">While the Add lines panel is open the layer list is shorter to make room for it, so on a small screen you will see fewer layers at once. It returns to normal size when the panel is closed.</div>
+  </div>
+
   <!-- REGISTER TO ALYX -->
   <div class="group-label">Registering tracks to Alyx</div>
 

@@ -82,6 +82,14 @@ pip install --upgrade --force-reinstall --no-deps git+https://github.com/kimilin
 
 `--no-deps` reinstalls only Lasagna itself, which is quick and leaves the other packages alone. If an update ever adds a new dependency, run the same command without `--no-deps`.
 
+**Points tab: several layers at once.** The Points tab lists every points layer (traced tracks, loaded point files).
+
+- **Select several layers** with Ctrl+click or Shift+click. Marker size, alpha, line width, symbol and color then apply to all selected layers, and right-click **Save** / **Delete** act on all of them. Selecting a single layer again shows that layer's own settings without changing the others.
+- **Open...** under the list opens the sparse point reader, the same dialog as File > Load ingredient > Sparse point reader.
+- **Close** removes the selected layers and **Close all** removes every layer in the list. Closing discards unsaved points, so closing more than one layer asks you to confirm first.
+
+**Add lines panel.** Turn on **Plugins > annotation_plugins > add_line_plugin** to trace a track by clicking points. The panel opens in the free space at the bottom of the Points tab (it used to be a separate window that could get hidden behind others). Left-click in a view adds a point; choose a fit type and **Add line** to keep the traced points and fit as new layers named after the Name box (`<name>_pts`, `<name>_fit`); **Clear** starts over. **Close** in the panel turns the plugin off, the same as unchecking it in the menu. While the panel is open the Name list shrinks to make room, so on a short screen you will see fewer layers at once.
+
 ## Registering Lasagna tracks to Alyx
 
 `register_tracks_alyx.py` replaces ibllib's `register_lasagna_tracks_alyx.py` example. It uploads tracks to the **shared IBL Alyx database**, so it checks every file before anything is written.
